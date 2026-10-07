@@ -1,0 +1,11 @@
+google-genai>=2.28
+tavily-python>=0.8
+gspread>=6.2
+google-auth>=2.60
+google-auth-oauthlib>=1.5
+google-api-python-client>=2.200
+apscheduler>=3.11,<4
+python-dotenv>=1.2
+pydantic>=2.13
+tzdata
+pytest>=9

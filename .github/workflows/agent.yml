@@ -1,0 +1,64 @@
+name: AI News Tracker
+
+on:
+  schedule:
+    # GitHub cron is always UTC. 04:30 UTC = 10:00 AM IST (UTC+5:30, no daylight saving).
+    # GitHub may start scheduled runs a few minutes late when its queue is busy.
+    - cron: "30 4 * * *"
+  workflow_dispatch: # "Run workflow" button, for manual tests
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-news-tracker
+  cancel-in-progress: false # never run two at once; they would race on the sheet and alerts
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # state.json remembers which models were already emailed. The runner is wiped after every
+      # run, so it is kept in the Actions cache: restore the newest one, save a new one after.
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+
+      # Credential files are rebuilt from secrets for this run only. They never enter git.
+      - name: Write credential files
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+        run: |
+          umask 077
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > credentials.json
+          printf '%s' "$GMAIL_TOKEN_JSON" > token.json
+
+      - name: Run agent
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          ALERT_TO_EMAIL: ${{ secrets.ALERT_TO_EMAIL }}
+          SCHEDULE_TIMEZONE: Asia/Kolkata
+        run: python agent.py
+
+      - name: Save state
+        if: always() # keep pending alerts even when a later step failed
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: state-${{ github.run_id }}
